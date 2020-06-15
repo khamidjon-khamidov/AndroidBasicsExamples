@@ -1,7 +1,9 @@
 package com.hamidjonhamidov.androidbasicsexamples
 
 import android.app.Activity
+import android.app.AlertDialog
 import android.app.Dialog
+import android.content.DialogInterface
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
@@ -58,47 +60,33 @@ class MainActivity : AppCompatActivity() {
 
     private fun bindButtons() {
         open_directory.setOnClickListener {
-//            openForImages()
-            openDirectoryForFullAccess()
-        }
-    }
 
-    private fun openForImages() {
-        val intent = Intent()
-        intent.setType("image/*")
-        intent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true);
-        intent.setAction(Intent.ACTION_GET_CONTENT)
-        startActivityForResult(
-            Intent.createChooser(intent, "Select Picture"),
-            OPEN_IMAFGES_REQUEST_CODE
-        )
+            if (!::mainUri.isInitialized)
+                openDirectoryForFullAccess()
+            // if directoryUri is already selected, we can select image to delete
+            else
+                openForImages()
+        }
     }
 
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
         if (requestCode == OPEN_DIRECTORY_REQUEST_CODE && resultCode == Activity.RESULT_OK) {
             val directoryUri = data?.data ?: return
-
-            contentResolver.takePersistableUriPermission(
-                directoryUri,
-                Intent.FLAG_GRANT_READ_URI_PERMISSION
-            )
-
             Log.d(TAG, "onActivityResult: ${directoryUri.path}")
             mainUri = directoryUri
             sharedPrefs.saveUri(directoryUri.toString())
             showDirectoryContents()
         }
+
         if (requestCode == OPEN_IMAFGES_REQUEST_CODE && resultCode == Activity.RESULT_OK) {
-            val clipData = data?.clipData ?: return
-            for (i in 0 until clipData.itemCount) {
-                val mUri = clipData.getItemAt(i).uri
-                val docFile = DocumentFile.fromSingleUri(this, mUri)
-                Log.d(
-                    TAG,
-                    "onActivityResult: ${docFile?.name}, canWrite=${docFile?.canWrite()}"
-                ) // canWrite returns false
-                docFile?.delete() // this is not working
+            createAlertDialog {
+                val clipData = data?.clipData
+                if (clipData != null)
+                    for (i in 0 until clipData.itemCount) {
+                        val mUri = clipData.getItemAt(i).uri
+                        deleteFromUri(mUri)
+                    }
             }
         }
     }
@@ -182,6 +170,31 @@ class MainActivity : AppCompatActivity() {
         startActivityForResult(intent, OPEN_DIRECTORY_REQUEST_CODE)
     }
 
+    private fun openForImages() {
+        val intent = Intent()
+        intent.setType("image/*")
+        intent.setAction(Intent.ACTION_OPEN_DOCUMENT).apply {
+            flags = Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                    Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION or
+                    Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+        }
+        intent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true)
+
+        startActivityForResult(
+            Intent.createChooser(intent, "Select Picture"),
+            OPEN_IMAFGES_REQUEST_CODE
+        )
+    }
+
+    private fun createAlertDialog(action: () -> Unit) {
+        AlertDialog.Builder(this)
+            .setTitle("Warning!!!")
+            .setMessage("Do you really want to delete selected images")
+            .setPositiveButton("Ok") { p0, p1 -> action() }
+            .setNegativeButton("Cancel") { p0, p1 -> p0.cancel() }
+            .create()
+            .show()
+    }
 }
 
 
