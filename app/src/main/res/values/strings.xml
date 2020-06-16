@@ -1,3 +1,7 @@
 <resources>
     <string name="app_name">AndroidBasicsExamples</string>
+    <string name="encrypt_file">Encrypt File</string>
+    <string name="choose_location">Choose Location</string>
+    <string name="encryption_decryption_password">encryption/decryption password</string>
+    <string name="decrypt_file">Decrypt File</string>
 </resources>
