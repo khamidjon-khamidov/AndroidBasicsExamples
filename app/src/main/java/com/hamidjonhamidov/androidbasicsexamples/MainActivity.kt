@@ -1,89 +1,129 @@
 package com.hamidjonhamidov.androidbasicsexamples
 
+import android.annotation.SuppressLint
 import android.app.Activity
 import android.content.Intent
 import android.net.Uri
-import androidx.appcompat.app.AppCompatActivity
 import android.os.Bundle
-import android.util.Log
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
+import androidx.appcompat.app.AppCompatActivity
 import androidx.documentfile.provider.DocumentFile
 import kotlinx.android.synthetic.main.activity_main.*
-import java.io.File
-import java.io.FileInputStream
-import java.io.FileOutputStream
-import java.io.InputStream
-import javax.crypto.Cipher
-import javax.crypto.CipherOutputStream
+import net.sqlcipher.database.SQLiteDatabase
 
 class MainActivity : AppCompatActivity() {
 
-    val OPEN_DIRECTORY_REQUEST_CODE = 322
-    val OPEN_IMAFGES_REQUEST_CODE = 2342
-    val OPEN_FILES_REQUEST_CODE = 22431
-    val ENCRYPTED_FILES = "Encrypted Files"
-    val DECRYPTED_FILES = "Decrypted Files"
+    val DB_PATH: String by lazy {
+        "$filesDir/demo.db"
+    }
+    val DB_TABLE_NAME = "TABLE_1"
+    val DB_COLUMN1_NAME = "name"
+    val DB_COLUMN2_SURNAME = "surname"
 
+
+    val OPEN_DIRECTORY_REQUEST_CODE = 322
     private val TAG = "MainActivity"
 
-    var mUri: Uri? = null
-
-    val sharedPrefs: SharedPrefs by lazy {
+    private val sharedPrefs: SharedPrefs by lazy {
         SharedPrefs(application)
+    }
+
+    private val database: SQLiteDatabase by lazy {
+        SQLiteDatabase.openOrCreateDatabase(
+            DB_PATH,
+            sharedPrefs.getPassword(),
+            null
+        )
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
-        mUri = Uri.parse(sharedPrefs.getUri())
-        mUri?.let {
-            setMessage(mUri!!.path.toString())
-        }
+        // initialize sqlite libraries
+        SQLiteDatabase.loadLibs(this)
+
         bindViews()
     }
 
-    private fun bindViews(){
-        btn_location.setOnClickListener {
-            if(mUri!=null){
-                showAlertDialog("Previous location exists! Do you want to choose another location?"){
-                    openDirectory()
+    private fun bindViews() {
+        setPasswordTv(sharedPrefs.getPassword())
+
+        btn_insert.setOnClickListener {
+            if (getName().isNotEmpty() && getSurname().isNotEmpty()) {
+                saveToDb(getName(), getSurname())
+                showToast("Message saved to DB")
+            } else {
+                showToast("Sorry, all fields must be filled")
+            }
+        }
+
+        btn_change_password.setOnClickListener {
+            if (getPassword().isNotEmpty()) {
+                database.changePassword(getPassword())
+                sharedPrefs.savePassword(getPassword())
+                setPasswordTv(getPassword())
+                showToast("Password changed to ${getPassword()}")
+            } else {
+                showToast("Password field cannot be empty")
+            }
+        }
+
+        btn_load_password.setOnClickListener {
+            et_password_db.setText(sharedPrefs.getPassword())
+            showToast("Password loaded")
+        }
+
+        btn_delete_all.setOnClickListener {
+            database.delete(DB_TABLE_NAME, null, null)
+            showToast("Deleted Successfully")
+        }
+
+        btn_load_data.setOnClickListener {
+            loadFromDb().let {
+                if (it.isEmpty()) {
+                        setMessage("Database is empty")
+                } else {
+                    setMessage(it)
                 }
-            } else {
-                openDirectory()
             }
         }
 
-        btn_encrypt.setOnClickListener {
-            if(getEditTextMessage().isEmpty()){
-                showAlertDialog("Encryptoin Code must not be empty!"){}
-            }
-            else if (mUri==null){
-                showAlertDialog("You should choose destination location first!") {}
-            }
-            else {
-                openForImage()
-            }
-        }
-
-        btn_decrypt.setOnClickListener {
-            if(getEditTextMessage().isEmpty()){
-                showAlertDialog("Decryption Code must not be empty!"){}
-            } else {
-                openForFile()
-            }
-        }
+        btn_load_data.callOnClick()
     }
 
-    private fun showAlertDialog(message: String, action: ()->Unit){
-        AlertDialog.Builder(this)
-            .setTitle("Warning")
-            .setMessage(message)
-            .setPositiveButton("Ok") {p0, p1 -> action()}
-            .setNegativeButton("Cancel") {p0, p1 -> p0.dismiss()}
-            .create()
-            .show()
+    private fun saveToDb(name: String, surname: String) {
+        createTableIfNotExist()
+        database.execSQL(
+            "insert into $DB_TABLE_NAME($DB_COLUMN1_NAME,  $DB_COLUMN2_SURNAME) values(?, ?)",
+            arrayOf(
+                name, surname
+            )
+        )
+    }
+
+    private fun loadFromDb(): String {
+        var s = ""
+        var i = 0
+
+        createTableIfNotExist()
+        val cursor = database.rawQuery("select * from $DB_TABLE_NAME", null)
+        cursor?.moveToFirst()
+        if (!cursor.isAfterLast) {
+            do {
+                s += "col_${i++}: name:${cursor.getString(0)} surname:${cursor.getString(1)}\n"
+            } while (cursor.moveToNext())
+
+            cursor.close()
+            return s
+        }
+
+        return s
+    }
+
+    private fun createTableIfNotExist() {
+        database.execSQL("create table if not exists $DB_TABLE_NAME($DB_COLUMN1_NAME,  $DB_COLUMN2_SURNAME)")
     }
 
     private fun openDirectory() {
@@ -95,80 +135,31 @@ class MainActivity : AppCompatActivity() {
         startActivityForResult(intent, OPEN_DIRECTORY_REQUEST_CODE)
     }
 
-    private fun openForImage() {
-        val intent = Intent()
-        intent.type = "image/*"
-        intent.setAction(Intent.ACTION_OPEN_DOCUMENT).apply {
-            flags = Intent.FLAG_GRANT_READ_URI_PERMISSION or
-                    Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION or
-                    Intent.FLAG_GRANT_WRITE_URI_PERMISSION
-        }
-//        intent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true)
-
-        startActivityForResult(
-            Intent.createChooser(intent, "Select Picture To Encrypt"),
-            OPEN_IMAFGES_REQUEST_CODE
-        )
+    private fun showToast(msg: String) {
+        Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
     }
 
-    private fun openForFile(){
-        val intent = Intent()
-        intent.type = "*/*"
-        intent.setAction(Intent.ACTION_OPEN_DOCUMENT).apply {
-            flags = Intent.FLAG_GRANT_READ_URI_PERMISSION or
-                    Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION or
-                    Intent.FLAG_GRANT_WRITE_URI_PERMISSION
-        }
-//        intent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true)
+    private fun getName() = et_name.text.toString()
 
-        startActivityForResult(
-            Intent.createChooser(intent, "Select File To Decrypt"),
-            OPEN_IMAFGES_REQUEST_CODE
-        )
-    }
+    private fun getSurname() = et_surname.text.toString()
 
+    private fun getPassword() = et_password_db.text.toString()
 
-    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
-        super.onActivityResult(requestCode, resultCode, data)
-        if (requestCode == OPEN_DIRECTORY_REQUEST_CODE && resultCode == Activity.RESULT_OK) {
-            val directoryUri = data?.data ?: return
-            mUri = directoryUri
-            setMessage(mUri!!.path.toString())
-            sharedPrefs.saveUri(directoryUri.toString())
-        }
-
-        if (requestCode == OPEN_IMAFGES_REQUEST_CODE && resultCode == Activity.RESULT_OK) {
-            val imageUri = data?.data ?: return
-            val imageFile = DocumentFile.fromSingleUri(this, imageUri) ?: return
-
-            val destFolder = makeChild(mUri!!, ENCRYPTED_FILES, true) ?: return
-            val sourceFile = makeChild(destFolder.uri, imageFile.name ?: return, false) ?: return
-
-
-            if(encrypt(imageUri, sourceFile.uri, getEditTextMessage(), "KHAMIDJON")) {
-                Toast.makeText(this, "File Encrypted", Toast.LENGTH_SHORT).show()
-            }
-        }
-
-        if (requestCode == OPEN_FILES_REQUEST_CODE && resultCode == Activity.RESULT_OK) {
-            val imageUri = data?.data ?: return
-            val imageFile = DocumentFile.fromSingleUri(this, imageUri) ?: return
-
-            val destFolder = makeChild(mUri!!, DECRYPTED_FILES, true) ?: return
-            val sourceFile = makeChild(destFolder.uri, imageFile.name ?: return, false) ?: return
-
-            if(decrypt(imageUri, sourceFile.uri, getEditTextMessage(), "KHAMIDJON")) {
-                Toast.makeText(this, "File Decrypted", Toast.LENGTH_SHORT).show()
-            }
-        }
-    }
-
-    private fun getEditTextMessage() = et_password.text.toString()
-
-    private fun setMessage(msg: String){
+    private fun setMessage(msg: String) {
         tv_message.text = msg
     }
+
+    @SuppressLint("SetTextI18n")
+    private fun setPasswordTv(password: String) {
+        tv_password.setText("password: $password")
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        database.close()
+    }
 }
+
 
 
 
