@@ -50,7 +50,7 @@ fun Activity.decrypt(curLocUri: Uri, newLocUri: Uri, password: String, salt: Str
         var key: ByteArray = ("$salt$password").toByteArray(Charsets.UTF_8)
         val sha = MessageDigest.getInstance("SHA-1")
         key = sha.digest(key)
-        key = Arrays.copyOf(key, 16)
+        key = key.copyOf(16)
         val sks = SecretKeySpec(key, "AES")
         val cipher = Cipher.getInstance("AES")
         cipher.init(Cipher.DECRYPT_MODE, sks)
