@@ -5,7 +5,7 @@ This project is intented to show Android Basics Examples.
 Currently, There are examples including:
 
 - Storage Access Framework
-- File Encryption/Decryptino 
+- File Encryption/Decryption 
 - SqlCipher library to encrypt data in database
 
 
